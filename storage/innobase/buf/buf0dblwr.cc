@@ -675,11 +675,6 @@ buf_dblwr_update(
 			const ulint size = 2 * TRX_SYS_DOUBLEWRITE_BLOCK_SIZE;
 			ulint i;
 			mutex_enter(&buf_dblwr->mutex);
-			//ogh debug code
-#if 0
-			ib_logf(IB_LOG_LEVEL_INFO,
-				"Find pgno : %d\n", bpage->offset);
-#endif
 			for (i = srv_doublewrite_batch_size; i < size; ++i) {
 				if (buf_dblwr->buf_block_arr[i] == bpage) {
 					buf_dblwr->s_reserved--;
@@ -687,14 +682,6 @@ buf_dblwr_update(
 					buf_dblwr->in_use[i] = false;
 					break;
 				}
-				//ogh debug code
-#if 0
-				if (buf_dblwr->buf_block_arr[i]) {
-					ib_logf(IB_LOG_LEVEL_INFO,
-							"Current dwb block : %d, pgno %d",
-							i, buf_dblwr->buf_block_arr[i]->offset);
-				}
-#endif
 			}
 
 			/* The block we are looking for must exist as a
@@ -840,9 +827,12 @@ buf_dblwr_write_block_to_datafile(
 #include <fcntl.h>
 #include <stdint.h>
 #include <sys/stat.h>
-#include <linux/fs.h>
 #include <scsi/sg.h>
 #include <inttypes.h>
+#include "/home/ogh/move-kernel/usr/include/linux/fs.h"
+#include <errno.h>
+#include <string.h>
+
 struct sg_io_hdr io_hdr;
 unsigned char cdb[16];
 
@@ -873,8 +863,11 @@ uint64_t
 buf_get_single_lsn(int fd, uint64_t offset) {                                                                  
 	uint64_t ret ;                                                   
 	uint32_t block;                                                  
+	struct stat64 st;
 
-	ioctl(fd, FIGETBSZ, &block);
+	fstat64(fd, &st);  
+
+	block = st.st_blksize;
 	ret = offset / block; // get page number
 
 	if( ioctl(fd, FIBMAP, &ret) ){                                   
@@ -893,10 +886,10 @@ buf_get_single_lsn(int fd, uint64_t offset) {
     return ret;                                                      
 }                                                                  
 
-static char cmd[20480];
+
 static
 int
-buf_share_send_command() {
+buf_share_send_command(int dwb_fd) {
 #if 1
 	if (0 >= share_count) 
 		return 0;
@@ -909,25 +902,32 @@ buf_share_send_command() {
 
 			ut_error;
 		}
+		memset(share_buf, 0, 4096);
 	} else if (srv_use_share == 2) {
-		int len;
-		sprintf(cmd, "sudo nvme vuc %s move ", srv_share_device);
-		len = strlen(cmd);
+		struct dev_move_range move;
+		int ret = 0;
+		move.count = share_count;
 		for(int i = 0 ;i < share_count; i++) { 
-			sprintf(cmd + len, " %" PRIu64 " %" PRIu64 " ", share_int[i][0], share_int[i][1]);
-			len = strlen(cmd);
+			move.src[i] = share_int[i][0];
+			move.dest[i] = share_int[i][1];
 		}
-		sprintf(cmd + len, " 0 0");
-		system(cmd);
-	} else {
-		for(int i = 0 ;i < share_count; i++) { 
-			pread(share_fd, share_buf, 4096, (share_int[i][1] - START_SECTOR) * 512);
-			pwrite(share_fd, share_buf, 4096, (share_int[i][0] - START_SECTOR) * 512);
+		ret = ioctl(share_fd, BLKMOVE, &move);
+		//ret = ioctl(dwb_fd, BLKMOVE, &move);
+		if (ret != 0) {
+			ib_logf(IB_LOG_LEVEL_ERROR, 
+				"Error while sending move command: %d, errno %d, %s",
+					ret, errno, strerror(errno));
+			ut_error;
+		}
+	} else { //use read & write
+		for(int i = 0 ;i < share_count; i++) {  //
+			pread(share_fd, share_buf, 4096, (share_int[i][1]) * 512);
+			pwrite(share_fd, share_buf, 4096, (share_int[i][0]) * 512);
 		}
 		fsync(share_fd);
 	}
 
-#if 1 || defined(DEBUG_SHARE)
+#if 0 || defined(DEBUG_SHARE)
 	ib_logf(IB_LOG_LEVEL_INFO,
 		"[SHARE ogh]Send SHARE: %d commands",
 		share_count);
@@ -935,7 +935,6 @@ buf_share_send_command() {
 #endif
 
     share_count = 0;
-	memset(share_buf, 0, 4096);
     return 0;
 }
 
@@ -975,7 +974,7 @@ buf_share_add_to_batch(int db_fd, int dwb_fd,
     share_count++;
 
 	if ( srv_share_max == share_count ) {
-		buf_share_send_command();
+		buf_share_send_command(dwb_fd);
 	}
 }
 
@@ -1109,7 +1108,6 @@ flush:
         uint64_t source, target;
 		int db_fd, dwb_fd;
 
-		mutex_enter(&buf_dblwr->share_mutex);
 		for (ulint i = 0 ;i < first_free; i++) {
 			const buf_block_t* block;
 			buf_page_t* bpage;
@@ -1134,24 +1132,21 @@ flush:
 			fil_get_fd_offset(TRX_SYS_SPACE, offset,
 								0, &dwb_fd, &target);
 
-#if 1
-			ib_logf(IB_LOG_LEVEL_INFO,
-					"Flush pgno %" PRIu64":%d, dwb %" PRIu64, 
-					bpage->offset, source/4096, target/4096);
-			// get real offset from dwb and db files. 
-#endif
+			mutex_enter(&buf_dblwr->share_mutex);
 			for (ulint j = 0 ;j < (UNIV_PAGE_SIZE + 4095) / 4096;j++) {
 				buf_share_add_to_batch(db_fd, dwb_fd, source, target);
 				source += 4096;
 				target += 4096;
 			}
+			mutex_exit(&buf_dblwr->share_mutex);
 #if 1
 			fil_share_complete_io(TRX_SYS_SPACE, offset);
 #endif 
 		}
 
 		// send command 
-		buf_share_send_command();
+		mutex_enter(&buf_dblwr->share_mutex);
+		buf_share_send_command(dwb_fd);
 		mutex_exit(&buf_dblwr->share_mutex);
 
 		//complete IO 
@@ -1164,6 +1159,7 @@ flush:
 				//buf_page_share_complete(buf_dblwr->buf_block_arr[i]);
 #endif
         }
+		fsync(share_fd); /// FIXME: is this really needed? 
     } else {
         /* Up to this point first_free and buf_dblwr->first_free are
            same because we have set the buf_dblwr->batch_running flag
@@ -1400,7 +1396,6 @@ retry:
         uint64_t source, target;
 		int	db_fd, dwb_fd;
 
-		mutex_enter(&buf_dblwr->share_mutex);
 		// get real offset from dwb and db files. 
 		if (bpage->zip.data) {
 			fil_get_fd_offset( get_space_id(bpage),
@@ -1414,12 +1409,7 @@ retry:
 		fil_get_fd_offset(TRX_SYS_SPACE,
 					offset, 0, &dwb_fd, &target);
 
-#if 1
-		ib_logf(IB_LOG_LEVEL_INFO,
-			"Flush pgno %" PRIu64":%d, dwb %" PRIu64, 
-			bpage->offset, source/4096, target/4096);
-#endif
-
+		mutex_enter(&buf_dblwr->share_mutex);
 		// add to SHARE Buffer
 		for (i = 0 ;i < (UNIV_PAGE_SIZE + 4095) / 4096;i++) {
 			buf_share_add_to_batch(db_fd, dwb_fd, source, target);
@@ -1428,7 +1418,7 @@ retry:
 		}
 
 		// send SHARE command 
-		buf_share_send_command();
+		buf_share_send_command(dwb_fd);
 		mutex_exit(&buf_dblwr->share_mutex);
 
 #if 1
@@ -1438,6 +1428,7 @@ retry:
 
 		if (fil_share_is_table(get_space_id(bpage)))
 			buf_page_io_complete(bpage);
+		fsync(share_fd); /// FIXME: is this really needed? 
 #endif
     } else{
         /* We know that the write has been flushed to disk now

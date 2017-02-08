@@ -1472,13 +1472,11 @@ buf_pool_init(
     //[[ogh: SHARE interface
     if (srv_use_share && share_fd <= 0) {
         /* open device supporting SHARE */
-		if (srv_use_share == 1) {
-			share_fd = open(srv_share_device, O_RDWR | O_DIRECT);
-			if (share_fd <= 0) {
-				ib_logf(IB_LOG_LEVEL_ERROR,
-						"Unable to open SHARE device: %s\n",
-						srv_share_device);
-			}
+		share_fd = open(srv_share_device, O_RDWR | O_DIRECT);
+		if (share_fd <= 0) {
+			ib_logf(IB_LOG_LEVEL_ERROR,
+					"Unable to open SHARE device: %s\n",
+					srv_share_device);
 		}
 
 		posix_memalign((void**)&share_buf, 4096, 4096);

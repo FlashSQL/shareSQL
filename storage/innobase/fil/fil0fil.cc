@@ -5423,7 +5423,6 @@ fil_node_complete_io(
 	if (type == OS_FILE_SHARE) { // ogh: share
 		system->modification_counter++;
 		node->modification_counter = system->modification_counter;
-		node->flush_counter = node->modification_counter;
 		if (fil_buffering_disabled(node->space)) {
 
 			/* We don't need to keep track of unflushed
@@ -5592,7 +5591,7 @@ fil_get_fd_offset(
 		offset = ((os_offset_t) block_offset << zip_size_shift);
 	}
 
-#if defined(DEBUG_SHARE)
+#if 1 || defined(DEBUG_SHARE)
 	ib_logf(IB_LOG_LEVEL_INFO,
 		"Fille name: %s", node->name);
 	ib_logf(IB_LOG_LEVEL_INFO,
@@ -5615,6 +5614,7 @@ int fil_share_is_table(ulint space_id)
 	mutex_exit(&fil_system->mutex);
 	return space->purpose == FIL_TABLESPACE; 
 }
+
 int
 fil_share_complete_io(
     ulint space_id,
@@ -5655,7 +5655,8 @@ fil_share_complete_io(
 	}
 
 	/* Now we have made the changes in the data structures of fil_system */
-	fil_node_complete_io(node, fil_system, OS_FILE_SHARE);
+	//fil_node_complete_io(node, fil_system, OS_FILE_SHARE);
+	fil_node_complete_io(node, fil_system, OS_FILE_WRITE);
 
 	mutex_exit(&fil_system->mutex);
 

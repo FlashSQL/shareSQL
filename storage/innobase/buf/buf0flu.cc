@@ -972,7 +972,7 @@ buf_flush_write_block_low(
 	/* When doing single page flushing the IO is done synchronously
 	and we flush the changes to disk only for the tablespace we
 	are working on. */
-	if (sync && srv_use_share == 0) { // ogh: We don't need to fsync
+	if (sync) { // ogh: We don't need to fsync
 		ut_ad(flush_type == BUF_FLUSH_SINGLE_PAGE);
 		fil_flush(buf_page_get_space(bpage));
 		buf_page_io_complete(bpage);
