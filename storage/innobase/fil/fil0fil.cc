@@ -1060,9 +1060,7 @@ retry:
 
 		/* Flush tablespaces so that we can close modified
 		files in the LRU list */
-		if (srv_use_share == 0) { //ogh
-			fil_flush_file_spaces(FIL_TABLESPACE);
-		}
+		fil_flush_file_spaces(FIL_TABLESPACE);
 
 		os_thread_sleep(20000);
 
@@ -5591,7 +5589,7 @@ fil_get_fd_offset(
 		offset = ((os_offset_t) block_offset << zip_size_shift);
 	}
 
-#if 1 || defined(DEBUG_SHARE)
+#if 0 || defined(DEBUG_SHARE)
 	ib_logf(IB_LOG_LEVEL_INFO,
 		"Fille name: %s", node->name);
 	ib_logf(IB_LOG_LEVEL_INFO,

@@ -659,7 +659,8 @@ buf_dblwr_update(
 			mutex_exit(&buf_dblwr->mutex);
 			/* This will finish the batch. Sync data files
 			to the disk. */
-			fil_flush_file_spaces(FIL_TABLESPACE);
+			if (bpage->isShared == 0)
+				fil_flush_file_spaces(FIL_TABLESPACE);
 			mutex_enter(&buf_dblwr->mutex);
 
 			/* We can now reuse the doublewrite memory buffer: */
@@ -1154,12 +1155,15 @@ flush:
 #if 1
 			fil_share_complete_io( get_space_id(buf_dblwr->buf_block_arr[i]),
 								buf_block_get_page_no((buf_block_t*)buf_dblwr->buf_block_arr[i]));
-			if (fil_share_is_table(get_space_id(buf_dblwr->buf_block_arr[i])))
+			if (fil_share_is_table(get_space_id(buf_dblwr->buf_block_arr[i]))) {
+				buf_dblwr->buf_block_arr[i]->isShared = 1;
 				buf_page_io_complete(buf_dblwr->buf_block_arr[i]);
+				buf_dblwr->buf_block_arr[i]->isShared = 0;
+			}
 				//buf_page_share_complete(buf_dblwr->buf_block_arr[i]);
 #endif
         }
-		fsync(share_fd); /// FIXME: is this really needed? 
+		//fsync(share_fd); /// FIXME: is this really needed? 
     } else {
         /* Up to this point first_free and buf_dblwr->first_free are
            same because we have set the buf_dblwr->batch_running flag
@@ -1426,9 +1430,11 @@ retry:
 				buf_block_get_page_no((buf_block_t*)bpage));
 		fil_share_complete_io(TRX_SYS_SPACE, offset);
 
+		bpage->isShared = 1;
 		if (fil_share_is_table(get_space_id(bpage)))
 			buf_page_io_complete(bpage);
-		fsync(share_fd); /// FIXME: is this really needed? 
+		bpage->isShared = 0;
+		//fsync(share_fd); /// FIXME: is this really needed? 
 #endif
     } else{
         /* We know that the write has been flushed to disk now

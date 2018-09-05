@@ -2090,7 +2090,7 @@ log_checkpoint(
 		recv_apply_hashed_log_recs(TRUE);
 	}
 
-	if (!srv_use_share && srv_unix_file_flush_method != SRV_UNIX_NOSYNC) { //ogh
+	if (srv_unix_file_flush_method != SRV_UNIX_NOSYNC) { //ogh
 		fil_flush_file_spaces(FIL_TABLESPACE);
 	}
 

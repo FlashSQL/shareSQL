@@ -850,8 +850,7 @@ buf_LRU_remove_pages(
 		buf_flush_dirty_pages(buf_pool, id, true, trx);
 		/* Ensure that all asynchronous IO is completed. */
 		os_aio_wait_until_no_pending_writes();
-		if (srv_use_share == 0) //ogh: we don't need flush
-			fil_flush(id);
+		fil_flush(id);
 		break;
 	}
 }

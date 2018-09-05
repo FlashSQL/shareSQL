@@ -1632,6 +1632,8 @@ struct buf_page_t{
 					or buf_block_t::mutex. */
 # endif /* UNIV_DEBUG_FILE_ACCESSES || UNIV_DEBUG */
 #endif /* !UNIV_HOTBACKUP */
+	//ogh
+	unsigned isShared;
 };
 
 /** The buffer control block structure */
