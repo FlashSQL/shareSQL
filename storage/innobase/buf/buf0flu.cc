@@ -959,7 +959,7 @@ buf_flush_write_block_low(
 		       zip_size ? zip_size : UNIV_PAGE_SIZE,
 		       frame, bpage);
 	} 
-#if 1 //ogh move
+#if 1 //ogh move for share
 	else if (flush_type == BUF_FLUSH_SINGLE_PAGE) {
 		buf_dblwr_write_single_page(bpage, sync);
 	} 
