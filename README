@@ -1,3 +1,11 @@
+# ShareSQL
+
+## Publication
+- Gihwan Oh, Chiyoung Seo, Ravi Mayuram, Yang-Suk Kee, Sang-Won Lee, "SHARE Interface in Flash Storage for Databases", SIGMOD'16, San Francisco, June 2016.
+- [Publication link](https://dl.acm.org/doi/10.1145/2882903.2882910)
+
+
+## Opensource code
 MySQL Server 5.6
 
 This is a release of MySQL, a dual-license SQL database server.
